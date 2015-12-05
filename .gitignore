@@ -1,0 +1,6 @@
+*.csv
+*.txt
+*.dmatrix
+*.png
+*.pyc
+.ipynb_checkpoints/
