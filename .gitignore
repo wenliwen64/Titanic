@@ -3,4 +3,5 @@
 *.dmatrix
 *.png
 *.pyc
+*.swp
 .ipynb_checkpoints/
