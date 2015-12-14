@@ -1,13 +1,14 @@
 #!/usr/bin/python
 import re
-import operator
+from operator import itemgetter
 import numpy as np
 import pandas as pd
 from sklearn import linear_model, cross_validation
 from sklearn.cross_validation import KFold
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.grid_search import GridSearchCV
+from sklearn.grid_search import GridSearchCV, RandomizedSearchCV
+from scipy.stats import randint as sp_randint
 
 class SolverClass(object):
     def __init__(self, ori_ftrain, ori_ftest):
@@ -31,11 +32,13 @@ class SolverClass(object):
         print('>> Training: checking missing...\n')
         self.check_mv()
 
+        predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+        #print(self.train_df[predictors])
         #print('--->>>xgb data structure preparation...\n')
         #self.xgb_dformat(dataset='train')
 
-        print('>> Training: evaluate sklearn-gbt...\n')
-        self.learn_and_predict_gbt(dataset='train')
+        #print('>> Training: evaluate sklearn-gbt...\n')
+        #self.learn_and_predict_gbt(dataset='train')
 
         print('>> Training: evaluate RandomForestClassifier...\n')
         self.learn_and_predict_rf(dataset='train')
@@ -53,22 +56,25 @@ class SolverClass(object):
         self.sklearn_dformat(dataset='test')
 
         print('>> Predict using sklearn on test dataset...\n')
-        self.predicts_sklearn_test = self.learn_and_predict_gbt(dataset='test').copy()
+        #self.predicts_sklearn_test = self.learn_and_predict_gbt(dataset='test').copy()
 
         print('>> Predict using RandomForestClassifier on test dataset...\n')
-        self.predicts_rf = self.learn_and_predict_rf(dataset='test').copy()
-        self.predicts_rf2 = self.learn_and_predict_rf(dataset='test2').copy()
+        self.predictions_rf = self.learn_and_predict_rf(dataset='test').copy()
+        #self.predicts_rf = self.learn_and_predict_rf(dataset='test').copy()
+        #self.predicts_rf2 = self.learn_and_predict_rf(dataset='test2').copy()
 
-        #print self.predicts_rf
+        print(self.predictions_rf)
         #print self.predicts_rf2
         #print self.test_predictions
     
-    def finish(self):
+    def finish(self, model='rf'):
+        PREDICTIONS_DICT = {'rf': self.predictions_rf}
+	RESULTS_DICT = {'rf': 'kaggle_titanic_rf.csv'}
         submission = pd.DataFrame({
             'PassengerId': self.test_df['PassengerId'],
-            'Survived': self.test_predictions 
+            'Survived': PREDICTIONS_DICT[model] 
         })
-        submission.to_csv('kaggle_gbt_1030.csv', index=False)
+        submission.to_csv(RESULTS_DICT[model], index=False)
 
     def feature_engineering_train(self): #  apply on train dataset DONE!!!
         """
@@ -84,7 +90,9 @@ class SolverClass(object):
         self.dconversion(dataset='train')
 
         # Fill the missing values based on different models
-        self.fill_mv(dataset='train', method='median')
+        self.fill_mv(dataset='train', method='kde')
+
+        # Finally generate new features
         self.generate_new_features(dataset='train')
 
     def feature_engineering_test(self): #  apply on train dataset DONE!!!
@@ -93,7 +101,6 @@ class SolverClass(object):
         """
 
         # Make a copy of origianl data
-        self.test_df = self.test_raw_df.copy()
 
         # Check missing values
         self.check_mv(dataset='test')
@@ -102,34 +109,34 @@ class SolverClass(object):
         self.dconversion(dataset='test')
 
         # Fill the missing values based on different models
-        self.fill_mv(dataset='test', method='median')
+        self.fill_mv(dataset='test', method='kde')
         self.generate_new_features(dataset='test')
         
     def dconversion(self, dataset='train'):  # DONE!!!
         ds = self.DATASET_DICT[dataset]
-	ds.loc[self.train_df['Sex'] == 'male', 'Sex'] = 0 
-	ds.loc[self.train_df['Sex'] == 'female', 'Sex'] = 1 
+	ds.loc[ds['Sex']=='male', 'Sex'] = 0 
+	ds.loc[ds['Sex']=='female', 'Sex'] = 1 
         ds['Embarked'] = ds['Embarked'].fillna('S')
-        ds.loc[self.train_df['Embarked'] == 'S', 'Embarked'] = 0
-        ds.loc[self.train_df['Embarked'] == 'C', 'Embarked'] = 1
-        ds.loc[self.train_df['Embarked'] == 'Q', 'Embarked'] = 2
+        ds.loc[ds['Embarked']=='S', 'Embarked'] = 0
+        ds.loc[ds['Embarked']=='C', 'Embarked'] = 1
+        ds.loc[ds['Embarked']=='Q', 'Embarked'] = 2
 
-	ds['Fare'] = ds['Fare'].fillna(ds['Fare'].median())   
+	ds['Fare'] = ds['Fare'].fillna(ds['Fare'].median())  # only for test dataset in this case, or we can use kde 
 
     def check_mv(self, dataset='train'):  # DONE!!!
         print(self.DATASET_DICT[dataset].describe())
 
-    def fill_mv(self, dataset='train', method='median'):  # Train DONE!!!
+    def fill_mv(self, dataset='train', method='kde'):  # Train DONE!!!
         #self.learn_and_fill_age(dataset, method='median')
         #self.learn_and_fill_age(dataset, method='mean')
-        self.learn_and_fill_age(dataset=dataset, method)
+        self.learn_and_fill_age(dataset=dataset, method=method)
         #params0 = self.learn_age(df, dataset='median')
         #params1 = self.learn_age(df, dataset='linear_reg')
   
         #self.fill_age(df, option='median', params=params0)
         #self.fill_age(df, option='linear_reg', params=params1)
 
-    def learn_and_fill_age(self, dataset, method='median'):  # DONE!!!
+    def learn_and_fill_age(self, dataset, method='kde'):  # DONE!!!
         ds = self.DATASET_DICT[dataset]
 	if method == 'median':
             ds['Age'] = ds['Age'].fillna(ds['Age'].median())
@@ -149,6 +156,15 @@ class SolverClass(object):
                     ds['Age'].iloc[i] = regr.predict(ds[predictors].iloc[i]).copy()
 
             print('....Regression score on training data  = {}\n'.format(score))
+	elif method == 'kde':
+	    MISSING_AGE_DICT = {0: {1:27, 2:29,3:27}, 1: {1:27, 2:27, 3:27}};
+
+	    for gender in MISSING_AGE_DICT:
+	        for pclass in MISSING_AGE_DICT[gender]:
+		    age = MISSING_AGE_DICT[gender][pclass]
+		    print('missing age to be filled is: {}'.format(age))
+		    selector = np.logical_and(ds['Sex']==gender, ds['Pclass']==pclass) 
+		    ds.loc[selector, 'Age'] = ds.loc[selector, 'Age'].fillna(age)
         else:
             print('....!!! Choose correct method')
 
@@ -158,8 +174,10 @@ class SolverClass(object):
         ds['FamilySize'] = ds['SibSp'] + ds['Parch'] 
         ds['NameLength'] = ds['Name'].apply(lambda x: len(x))
         titles = ds['Name'].apply(self.get_title)
+	print('titles:')
+	print(titles[titles=='C'])
     
-	title_mapping = {'Mr': 1, 'Miss': 2, 'Mrs': 3, 'Master': 4, 'Dr': 5, 'Rev': 6, 'Col': 7, 'Major': 8, 'Mlle': 9, 'Countess': 10, 'Ms': 11, 'Lady': 12, 'Jonkheer': 13, 'Don': 14, 'Mme': 15, 'Capt': 16, 'Sir': 17}
+	title_mapping = {'Mr': 1, 'Miss': 2, 'Mrs': 3, 'Master': 4, 'Dr': 5, 'Rev': 6, 'Col': 7, 'Major': 8, 'Mlle': 9, 'Countess': 10, 'Ms': 11, 'Lady': 12, 'Jonkheer': 13, 'Don': 14, 'Mme': 15, 'Capt': 16, 'Sir': 17, 'Dona':18}
 
         for k, v in title_mapping.items():
             titles[titles == k] = v 
@@ -173,25 +191,20 @@ class SolverClass(object):
         return
 
     def xgb_dformat(self, dataset='train'):  # DONE!!!
-
         if dataset == 'train':
             ftrain = open('./titanic.train.dmatrix', 'w')
             for i in range(self.train_df.shape[0]):
-                ftrain.write(str(titanic['Survived'].iloc[i]))
-                ftrain.write(' ')
+                ftrain.write('{} '.format(titanic['Survived'].iloc[i]))
                 for j in range(len(predictors)):
-                    newline = ''.join([str(j), ':', str(self.train_df[predictors[j]].iloc[i]), ' \n'])
-                    ftrain.write(newline)
+                    ftrain.write('{0}{1}{2}{3}'.format(j, ':', self.train_df[predictors[j]].iloc[i], ' \n'))
             self.DMatrix_train = xgb.DMatrix('./titanic.train.dmatrix')
 
         else:
             ftest = open('./titanic.test.dmatrix', 'w')
             for i in range(self.test_df.shape[0]):
-                ftest.write(str(-1))
-                ftest.write(' ')
+                ftest.write('-1 ')
                 for j in range(len(predictors)):
-                    newline = ''.join([str(j), ':', str(self.test_df[predictors[j]].iloc[i]), ' \n'])
-                    ftest.write(newline)
+                    ftrain.write('{0}{1}{2}{3}'.format(j, ':', self.test_df[predictors[j]].iloc[i], ' \n'))
             self.DMatrix_test = xgb.DMatrix('./titanic.test.dmatrix')
 
     '''
@@ -199,7 +212,7 @@ class SolverClass(object):
     '''
     def learn_and_predict_gbt(self, dataset='train'):  # DONE!!!
         if dataset == 'train':
-            predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+            predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
 
             algorithms = [
                 [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), predictors],
@@ -257,7 +270,7 @@ class SolverClass(object):
     def learn_and_predict_xgb(self, dataset='train'):
         '''
         Use xgboost to do work
-         '''
+        '''
         if dataset == 'train':
             self.xgb_params = {'max_depth':3, 'eta':0.5, 'silent':1, 'objective':'binary:logistic'}
             self.xgb_num_round = 20
@@ -269,8 +282,23 @@ class SolverClass(object):
     def learn_and_predict_rf(self, dataset='train'):
         if dataset == 'train':
             predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
-            alg = RandomForestClassifier(random_state=1, n_estimators=20, min_samples_split=4, min_samples_leaf=2)
-            scores = cross_validation.cross_val_score(alg, self.train_df[predictors], self.train_df['Survived'], cv=3)
+
+	    param_dist = {'max_depth': [3, None],
+	                  'max_features': sp_randint(1, 8),
+			  'min_samples_split': sp_randint(1, 11),
+			  'min_samples_leaf': sp_randint(1, 11),
+			  'bootstrap': [True, False],
+			  'criterion': ['gini', 'entropy'],
+			  'n_estimators': sp_randint(10,200)}
+
+            clf = RandomForestClassifier()
+            #random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=500, cv=3)
+	    #random_search.fit(self.train_df[predictors], self.train_df['Survived'])
+	    #report(random_search.grid_scores_)
+	    
+
+            #alg = RandomForestClassifier(random_state=1, n_estimators=20, min_samples_split=4, min_samples_leaf=2)
+            #scores = cross_validation.cross_val_score(alg, self.train_df[predictors], self.train_df['Survived'], cv=3)
             """
             # Grid Search for the optimal parameters for random forest
             tuned_parameters = [{'n_estimators':[1, 10, 30, 100], 'min_samples_split':[2, 4, 8, 16], 'min_samples_leaf':[1, 2, 4, 6]}, ]   
@@ -282,14 +310,14 @@ class SolverClass(object):
             for params, mean_score, scores in clf.grid_scores_:
                 print("%0.3f (+/-%0.03f) for %r" % (mean_score, scores.std() * 2, params))
                 """
-            print 'mean score of original one is : \n'
+            #print 'mean score of original one is : \n'
         
-            print np.mean(scores)
+            #print np.mean(scores)
         elif dataset == 'test':
             predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
-            alg = RandomForestClassifier(random_state=1, n_estimators=20, min_samples_split=4, min_samples_leaf=2)
-            alg.fit(self.train_df[predictors], self.train_df['Survived'])
-            predictions = alg.predict(self.test_df[predictors].astype(float))
+            clf = RandomForestClassifier(random_state=1, n_estimators=109, min_samples_split=3, min_samples_leaf=6, criterion='gini', max_features=6, bootstrap=True)
+            clf.fit(self.train_df[predictors], self.train_df['Survived'])
+            predictions = clf.predict(self.test_df[predictors].astype(float))
 
             predictions[predictions > .5] = 1.
             predictions[predictions <= .5] = 0.
@@ -314,7 +342,7 @@ class SolverClass(object):
                 current_id = 1
             else:
                 # Here the operator.itemgetter is used to tell the comparison algo to compare the value/second item in each dictionary entry, 
-                current_id = (max(self.family_id_mapping.items(), key=operator.itemgetter(1))[1]+1)
+                current_id = (max(self.family_id_mapping.items(), key=itemgetter(1))[1]+1)
                 self.family_id_mapping[family_id] = current_id
 
             self.family_id_mapping[family_id] = current_id
@@ -322,16 +350,28 @@ class SolverClass(object):
         return self.family_id_mapping[family_id]
 
     def get_title(self, name):
-	title_search = re.search(' ([A-Za-z]*)\.', name)
+	title_search = re.search(' ([A-Za-z]+)\.', name)
 	if title_search:
 	    return title_search.group(1)
-	else:
+        else:
 	    return ''
     
+# Utility function to report best scores
+def report(grid_scores, n_top=3):
+    top_scores = sorted(grid_scores, key=itemgetter(1), reverse=True)[:n_top]
+    for i, score in enumerate(top_scores):
+        print("Model with rank: {0}".format(i + 1))
+        print("Mean validation score: {0:.3f} (std: {1:.3f})".format(
+              score.mean_validation_score,
+              np.std(score.cv_validation_scores)))
+        print("Parameters: {0}".format(score.parameters))
+        print("")
+
+
 
 if __name__ == '__main__':
     pd.options.display.max_rows = 999
     solver = SolverClass('train.csv', 'test.csv')
     solver.learn_and_evaluate_train()
     solver.learn_and_predict_test()
-    solver.finish()
+    solver.finish('rf')
