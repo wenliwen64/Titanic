@@ -33,12 +33,11 @@ class SolverClass(object):
         print('>> Training: checking missing...\n')
         self.check_mv()
 
-        #print(self.train_df[predictors])
         print('>> xgb training data preparation...\n')
         self.xgb_dformat(dataset='train')
 
-        #print('>> Training: evaluate sklearn-gbt...\n')
-        #self.learn_and_predict_gbt(dataset='train')
+        print('>> Training: evaluate sklearn-gbt...\n')
+        self.learn_and_predict_gbt(dataset='train')
 
         print('>> Training: evaluate RandomForestClassifier...\n')
         self.learn_and_predict_rf(dataset='train')
@@ -69,8 +68,9 @@ class SolverClass(object):
         print(self.predictions_rf)
         print('>> Predicting: using xgboost...\n')
 	self.learn_and_predict_xgb(dataset='test')
-        #print self.predicts_rf2
-        #print self.test_predictions
+
+        print('>> Predicting: using sklearn-gbt&logistic-regression\n')
+	self.learn_and_predict_gbt(dataset='test')
     
     def finish(self, model='rf'):
         PREDICTIONS_DICT = {'rf': self.predictions_rf}
@@ -231,13 +231,13 @@ class SolverClass(object):
     ==============================Machine Learning==================================
     '''
     def learn_and_predict_gbt(self, dataset='train'):  # DONE!!!
-        if dataset == 'train':
-            predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
 
+        if dataset == 'train':
             algorithms = [
                 [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), predictors],
-                [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Titles", "Age", "Embarked"]]
-            ]
+                [LogisticRegression(random_state=1), predictors]
+		]
 
             kf = KFold(self.train_df.shape[0], n_folds=3, random_state=1)
             full_predictions = []
@@ -249,7 +249,7 @@ class SolverClass(object):
             # Fit the algorithm using the cv training data.
                     alg.fit(train_predictors, train_targets)
             # Predict using the test dataset.  We have to convert all the columns to floats to avoid an error.
-                    test_predictions = alg.predict(self.train_df[predictors].iloc[test,:].astype(float))
+                    test_predictions = alg.predict(self.train_df[predictors].iloc[test, :].astype(float))
                     cv_predictions.append(test_predictions)
             # The gradient boosting classifier generates better predictions, so we weight it higher.
                 predictions = (cv_predictions[0] * 3 + cv_predictions[1]) / 4
@@ -263,12 +263,11 @@ class SolverClass(object):
             print ''.join(['accuracy is equal to ====> ', str(auc)])
 
         if dataset == 'test':
-            predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
 
             algorithms = [
                 [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), predictors],
-                [LogisticRegression(random_state=1), ["Pclass", "Sex", "Fare", "FamilySize", "Titles", "Age", "Embarked"]]
-            ]
+                [LogisticRegression(random_state=1), predictors]
+		]
 
             predictions_ensemble = []
             for alg, predictors in algorithms:
@@ -282,10 +281,13 @@ class SolverClass(object):
             final_predictions[final_predictions > 0.5] = 1.
             final_predictions[final_predictions <= 0.5] = 0. 
             final_predictions = final_predictions.astype(int)
-            print final_predictions
-            self.test_predictions = final_predictions.copy()
-            return self.test_predictions
-
+	    print('====> gbt predictions <====')
+	    print(final_predictions)
+	    submission = pd.DataFrame({
+		    'PassengerId': self.test_df['PassengerId'],
+		    'Survived': final_predictions
+		    })
+            submission.to_csv('titanic_gbt_1217.csv', index=False)
 
     def learn_and_predict_xgb(self, dataset='train'):
         '''
@@ -378,8 +380,6 @@ class SolverClass(object):
             predictions[predictions <= .5] = 0.
             self.test_predictions = predictions.astype(int).copy()
             return self.test_predictions
-
-    def learn_and_predict_erf(self, dataset='train'):
 
     def get_family_id(self, row):
         last_name = row['Name'].split(',')[0]
