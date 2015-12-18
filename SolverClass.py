@@ -9,6 +9,7 @@ from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.grid_search import GridSearchCV, RandomizedSearchCV
 from scipy.stats import randint as sp_randint
+import xgboost as xgb
 
 class SolverClass(object):
     def __init__(self, ori_ftrain, ori_ftest):
@@ -32,10 +33,9 @@ class SolverClass(object):
         print('>> Training: checking missing...\n')
         self.check_mv()
 
-        predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
         #print(self.train_df[predictors])
-        #print('--->>>xgb data structure preparation...\n')
-        #self.xgb_dformat(dataset='train')
+        print('>> xgb training data preparation...\n')
+        self.xgb_dformat(dataset='train')
 
         #print('>> Training: evaluate sklearn-gbt...\n')
         #self.learn_and_predict_gbt(dataset='train')
@@ -43,8 +43,8 @@ class SolverClass(object):
         print('>> Training: evaluate RandomForestClassifier...\n')
         self.learn_and_predict_rf(dataset='train')
 
-        #print('--->>>Evaluate xgboost...\n')
-        #self.predicts_xgb_train = self.learn_and_predict_xgb(dataset='train')
+        print('>> Training: xgboost...\n')
+        self.learn_and_predict_xgb(dataset='train')
 
     def learn_and_predict_test(self):
         print('PhaseIII. Do machine learning on test dataset...\n')
@@ -55,15 +55,20 @@ class SolverClass(object):
         print('>> Sklearn data structure preparation...\n')
         self.sklearn_dformat(dataset='test')
 
-        print('>> Predict using sklearn on test dataset...\n')
+        print('>> xgb test data preparation...\n')
+        self.xgb_dformat(dataset='test')
+
+        print('>> Predicting: using sklearn on test dataset...\n')
         #self.predicts_sklearn_test = self.learn_and_predict_gbt(dataset='test').copy()
 
-        print('>> Predict using RandomForestClassifier on test dataset...\n')
+        print('>> Predicting: using RandomForestClassifier on test dataset...\n')
         self.predictions_rf = self.learn_and_predict_rf(dataset='test').copy()
         #self.predicts_rf = self.learn_and_predict_rf(dataset='test').copy()
         #self.predicts_rf2 = self.learn_and_predict_rf(dataset='test2').copy()
 
         print(self.predictions_rf)
+        print('>> Predicting: using xgboost...\n')
+	self.learn_and_predict_xgb(dataset='test')
         #print self.predicts_rf2
         #print self.test_predictions
     
@@ -116,10 +121,13 @@ class SolverClass(object):
         ds = self.DATASET_DICT[dataset]
 	ds.loc[ds['Sex']=='male', 'Sex'] = 0 
 	ds.loc[ds['Sex']=='female', 'Sex'] = 1 
+	ds['Sex'] = ds['Sex'].astype(int)
         ds['Embarked'] = ds['Embarked'].fillna('S')
+
         ds.loc[ds['Embarked']=='S', 'Embarked'] = 0
         ds.loc[ds['Embarked']=='C', 'Embarked'] = 1
         ds.loc[ds['Embarked']=='Q', 'Embarked'] = 2
+	ds['Embarked'] = ds['Embarked'].astype(int);
 
 	ds['Fare'] = ds['Fare'].fillna(ds['Fare'].median())  # only for test dataset in this case, or we can use kde 
 
@@ -157,8 +165,7 @@ class SolverClass(object):
 
             print('....Regression score on training data  = {}\n'.format(score))
 	elif method == 'kde':
-	    MISSING_AGE_DICT = {0: {1:27, 2:29,3:27}, 1: {1:27, 2:27, 3:27}};
-
+	    MISSING_AGE_DICT = {0: {1:27, 2:29,3:27}, 1: {1:27, 2:27, 3:27}}; # See notebook(Main.ipnb) for details
 	    for gender in MISSING_AGE_DICT:
 	        for pclass in MISSING_AGE_DICT[gender]:
 		    age = MISSING_AGE_DICT[gender][pclass]
@@ -183,29 +190,42 @@ class SolverClass(object):
             titles[titles == k] = v 
             ds['Titles'] = titles
 
+        ds['Titles'] = ds['Titles'].astype(int)
+
         family_ids = ds.apply(self.get_family_id, axis=1)
         family_ids[ds['FamilySize'] < 3] = -1
         ds['FamilyId'] = family_ids
+
  
     def sklearn_dformat(self, dataset='train'):  # DONE!!!
         return
 
-    def xgb_dformat(self, dataset='train'):  # DONE!!!
+    def xgb_dformat(self, dataset='train'):  # Done
+        predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
         if dataset == 'train':
             ftrain = open('./titanic.train.dmatrix', 'w')
-            for i in range(self.train_df.shape[0]):
-                ftrain.write('{} '.format(titanic['Survived'].iloc[i]))
-                for j in range(len(predictors)):
-                    ftrain.write('{0}{1}{2}{3}'.format(j, ':', self.train_df[predictors[j]].iloc[i], ' \n'))
-            self.DMatrix_train = xgb.DMatrix('./titanic.train.dmatrix')
 
-        else:
+            for i in range(self.train_df.shape[0]):
+                ftrain.write('{} '.format(self.train_df['Survived'].iloc[i])) # target variable
+                for j in range(len(predictors)):
+                    ftrain.write('{0}:{1} '.format(j, self.train_df[predictors[j]].iloc[i]))
+                ftrain.write('\n')
+
+            ftrain.close()
+            self.DMatrix_train = xgb.DMatrix('./titanic.train.dmatrix')
+	    #self.DMatrix_train.save_binary('titanic_train.buffer')
+        elif dataset == 'test':
             ftest = open('./titanic.test.dmatrix', 'w')
+
             for i in range(self.test_df.shape[0]):
                 ftest.write('-1 ')
                 for j in range(len(predictors)):
-                    ftrain.write('{0}{1}{2}{3}'.format(j, ':', self.test_df[predictors[j]].iloc[i], ' \n'))
+                    ftest.write('{0}:{1} '.format(j, self.test_df[predictors[j]].iloc[i]))
+		ftest.write('\n')
+
+            ftest.close()
             self.DMatrix_test = xgb.DMatrix('./titanic.test.dmatrix')
+	    #self.DMatrix_test.save_binary('titanic_test.buffer')
 
     '''
     ==============================Machine Learning==================================
@@ -271,18 +291,43 @@ class SolverClass(object):
         '''
         Use xgboost to do work
         '''
+	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
         if dataset == 'train':
-            self.xgb_params = {'max_depth':3, 'eta':0.5, 'silent':1, 'objective':'binary:logistic'}
-            self.xgb_num_round = 20
-            t = xgb.cv(self.xgb_params, self.DMatrix_train, self.xgb_num_round, nfold=4, metrics={'error'}, seed=0)
+	    param_dist = {'max_depth': sp_randint(3, 10),
+	                  'learning_rate': [0.01, 0.03, 0.1, 0.3, 1.0],
+	                  'gamma': [0, 0.1, 0.2, 0.3],
+			  'subsample': [.1, .2, .3, .4, 0.5],
+			  'colsample_bytree': [.4, .5],
+			  'objective': ['binary:logistic'],
+			  'n_estimators': sp_randint(20, 150),
+			  }
+
+	    clf = xgb.XGBClassifier()
+            #random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=500, cv=3)
+	    #random_search.fit(self.train_df[predictors], self.train_df['Survived'])
+
+	    #report(random_search.grid_scores_)
         else: 
-            params = {'max_depth':3, 'eta':0.5, 'silent':1, 'objective':'binary:logistic'}
-            num_round = 20
+            params = {'max_depth': 6, 'learning_rate': 0.1, 'colsample_bytree': 0.5, 'n_estimators': 54, 'subsample': .3, 'gamma': 0, 'objective':'binary:logistic', 'eval_metric': 'auc'} #0.845, cv=3 
+	    bst = xgb.train(params, self.DMatrix_train)
+	    #clf = xgb.XGBClassifier(params)
+	    #clf.fit(self.train_df[predictors], self.train_df['Survived'], verbose=True)
+	    #print(self.test_df[predictors])
+	    predictions = pd.Series(bst.predict(self.DMatrix_test))
+	    predictions[predictions >= .5] = 1
+	    predictions[predictions < .5] = 0
+	    predictions = [int(x) for x in predictions.tolist()]
+	    print(predictions)
+            submission = pd.DataFrame({
+                    'PassengerId': self.test_df['PassengerId'],
+		    'Survived': predictions 
+		    })
+            submission.to_csv("xgboost_845.csv", index=False)
 
     def learn_and_predict_rf(self, dataset='train'):
+	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
+	              "Titles", "FamilyId"]
         if dataset == 'train':
-            predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
-
 	    param_dist = {'max_depth': [3, None],
 	                  'max_features': sp_randint(1, 8),
 			  'min_samples_split': sp_randint(1, 11),
@@ -333,6 +378,8 @@ class SolverClass(object):
             predictions[predictions <= .5] = 0.
             self.test_predictions = predictions.astype(int).copy()
             return self.test_predictions
+
+    def learn_and_predict_erf(self, dataset='train'):
 
     def get_family_id(self, row):
         last_name = row['Name'].split(',')[0]
