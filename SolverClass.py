@@ -370,17 +370,7 @@ class SolverClass(object):
             predictions[predictions <= .5] = 0.
             self.test_predictions = predictions.astype(int).copy()
             return self.test_predictions
-        elif dataset == 'test2':
-            predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
-            alg = RandomForestClassifier(random_state=1, n_estimators=100, min_samples_split=16, min_samples_leaf=1)
-            alg.fit(self.train_df[predictors], self.train_df['Survived'])
-            predictions = alg.predict(self.test_df[predictors].astype(float))
-
-            predictions[predictions > .5] = 1.
-            predictions[predictions <= .5] = 0.
-            self.test_predictions = predictions.astype(int).copy()
-            return self.test_predictions
-
+        
     def get_family_id(self, row):
         last_name = row['Name'].split(',')[0]
         family_id = '{0}{1}'.format(last_name, row['FamilySize'])
