@@ -8,6 +8,7 @@ from sklearn.cross_validation import KFold
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.grid_search import GridSearchCV, RandomizedSearchCV
+from sklearn.svm import SVC
 from scipy.stats import randint as sp_randint
 import xgboost as xgb
 
@@ -36,6 +37,9 @@ class SolverClass(object):
         print('>> xgb training data preparation...\n')
         self.xgb_dformat(dataset='train')
 
+        print('>> Training: evaluate sklearn-svm...\n')
+        self.learn_and_predict_svm(dataset='train')
+
         print('>> Training: evaluate sklearn-gbt...\n')
         self.learn_and_predict_gbt(dataset='train')
 
@@ -59,6 +63,9 @@ class SolverClass(object):
 
         print('>> Predicting: using sklearn on test dataset...\n')
         #self.predicts_sklearn_test = self.learn_and_predict_gbt(dataset='test').copy()
+
+        #print('>> Predicting: evaluate sklearn-svm...\n')
+        #self.learn_and_predict_svm(dataset='test')
 
         print('>> Predicting: using RandomForestClassifier on test dataset...\n')
         self.predictions_rf = self.learn_and_predict_rf(dataset='test').copy()
@@ -325,6 +332,22 @@ class SolverClass(object):
 		    'Survived': predictions 
 		    })
             submission.to_csv("xgboost_845.csv", index=False)
+
+    def learn_and_predict_svm(self, dataset='train'):
+	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
+	              "Titles", "FamilyId"]
+
+        param_dist = {
+		'kernel': ['poly'],
+		'C': [.01, .03, .1, .3, 1, 3, 10., 20],
+		'gamma': np.random.uniform(0, 1, 100),
+	        }
+
+
+        clf = SVC() 
+	random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=100, cv=3)
+        random_search.fit(self.train_df[predictors], self.train_df['Survived'])
+        report(random_search.grid_scores_)
 
     def learn_and_predict_rf(self, dataset='train'):
 	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
