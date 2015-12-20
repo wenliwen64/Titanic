@@ -64,8 +64,8 @@ class SolverClass(object):
         print('>> Predicting: using sklearn on test dataset...\n')
         #self.predicts_sklearn_test = self.learn_and_predict_gbt(dataset='test').copy()
 
-        #print('>> Predicting: evaluate sklearn-svm...\n')
-        #self.learn_and_predict_svm(dataset='test')
+        print('>> Predicting: evaluate sklearn-svm...\n')
+        self.learn_and_predict_svm(dataset='test')
 
         print('>> Predicting: using RandomForestClassifier on test dataset...\n')
         self.predictions_rf = self.learn_and_predict_rf(dataset='test').copy()
@@ -107,6 +107,11 @@ class SolverClass(object):
         # Finally generate new features
         self.generate_new_features(dataset='train')
 
+        predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+	self.train_df[predictors] = self.train_df[predictors].astype(float)
+        
+
+
     def feature_engineering_test(self): #  apply on train dataset DONE!!!
         """
         Check and fill missing values if necessary, get to the final state of the raw data = self.train_data, self.test_data
@@ -123,6 +128,10 @@ class SolverClass(object):
         # Fill the missing values based on different models
         self.fill_mv(dataset='test', method='kde')
         self.generate_new_features(dataset='test')
+
+
+        predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+	self.test_df[predictors] = self.test_df[predictors].astype(float)
         
     def dconversion(self, dataset='train'):  # DONE!!!
         ds = self.DATASET_DICT[dataset]
@@ -337,17 +346,31 @@ class SolverClass(object):
 	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
 	              "Titles", "FamilyId"]
 
-        param_dist = {
-		'kernel': ['poly'],
-		'C': [.01, .03, .1, .3, 1, 3, 10., 20],
-		'gamma': np.random.uniform(0, 1, 100),
-	        }
+        if dataset == 'train':
+	    param_dist = {
+	        'kernel': ['rbf'],
+	        'C': [.01, .03, .1, .3, 1, 3, 10., 20],
+	        'gamma': np.random.uniform(0, 1, 100),
+	    }
 
+            clf = SVC() 
+	    random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=100, cv=3)
+            random_search.fit(self.train_df[predictors], self.train_df['Survived'])
+            report(random_search.grid_scores_)
+	    self.svm_params = top_params(random_search.grid_scores_)
+	    print(self.svm_params)
 
-        clf = SVC() 
-	random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=100, cv=3)
-        random_search.fit(self.train_df[predictors], self.train_df['Survived'])
-        report(random_search.grid_scores_)
+        elif dataset  == 'test':
+	    clf = SVC(kernel='rbf', C=10, gamma=0.00158)
+            clf.fit(self.train_df[predictors], self.train_df['Survived'])
+	    predictions = clf.predict(self.test_df[predictors])
+            predictions[predictions > .5] = 1  
+            predictions[predictions <= .5] = 0
+            submission = pd.DataFrame({
+	                     'PassengerId': self.test_df['PassengerId'],
+			     'Survived': predictions
+		    })
+            submission.to_csv('svm_rbf.csv', index=False)
 
     def learn_and_predict_rf(self, dataset='train'):
 	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
@@ -427,7 +450,9 @@ def report(grid_scores, n_top=3):
         print("Parameters: {0}".format(score.parameters))
         print("")
 
-
+def top_params(grid_scores):
+    top_scores = sorted(grid_scores, key=itemgetter(1), reverse=True)[0]
+    return top_scores.parameters
 
 if __name__ == '__main__':
     pd.options.display.max_rows = 999
