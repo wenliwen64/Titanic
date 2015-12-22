@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import re
+from scipy import stats
 from operator import itemgetter
 import numpy as np
 import pandas as pd
@@ -10,6 +11,8 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.grid_search import GridSearchCV, RandomizedSearchCV
 from sklearn.svm import SVC
 from scipy.stats import randint as sp_randint
+from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPClassifier
 import xgboost as xgb
 
 class SolverClass(object):
@@ -37,6 +40,12 @@ class SolverClass(object):
         print('>> xgb training data preparation...\n')
         self.xgb_dformat(dataset='train')
 
+        print('>> MLP training data preparation...\n')
+        self.mlp_dformat(dataset='train')
+
+	print('>> Training: evaluate sklearn-MLP...\n')
+        self.learn_and_predict_mlp(dataset='train')
+
         print('>> Training: evaluate sklearn-svm...\n')
         self.learn_and_predict_svm(dataset='train')
 
@@ -61,8 +70,11 @@ class SolverClass(object):
         print('>> xgb test data preparation...\n')
         self.xgb_dformat(dataset='test')
 
-        print('>> Predicting: using sklearn on test dataset...\n')
-        #self.predicts_sklearn_test = self.learn_and_predict_gbt(dataset='test').copy()
+	print('>> MLP test data preparation...\n')
+        self.mlp_dformat(dataset='test')
+
+        print('>> Predicting: using sklearn-mlpclassifier...\n')
+        self.learn_and_predict_mlp(dataset='test')
 
         print('>> Predicting: evaluate sklearn-svm...\n')
         self.learn_and_predict_svm(dataset='test')
@@ -243,6 +255,51 @@ class SolverClass(object):
             self.DMatrix_test = xgb.DMatrix('./titanic.test.dmatrix')
 	    #self.DMatrix_test.save_binary('titanic_test.buffer')
 
+    def mlp_dformat(self, dataset='train'): 
+	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+
+        scaler = StandardScaler()
+
+        if dataset == 'train':
+            self.mlp_train_df = self.train_df.copy()
+            scaler.fit(self.mlp_train_df[predictors]) 
+            self.mlp_train_df[predictors] = scaler.transform(self.mlp_train_df[predictors])
+
+	elif dataset == 'test':
+            self.mlp_test_df = self.test_df.copy()
+            scaler.fit(self.mlp_train_df[predictors]) 
+            self.mlp_test_df[predictors] = scaler.transform(self.mlp_test_df[predictors])
+
+    def learn_and_predict_mlp(self, dataset='train'):
+	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+	
+	if dataset == 'train':
+	    param_dist = {
+		'learning_rate': ['constant'],
+		'learning_rate_init': [0.05, 0.01, 0.005, 0.001], # what is this
+		    'hidden_layer_sizes': [(8,), (9,), (10,), (11,), (12,), (13,)],
+		'activation': ['logistic', 'tanh', 'relu'],
+		'alpha':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1.], 
+		'verbose': [False], 
+		'max_iter': [200],
+	    }
+
+            clf = MLPClassifier()
+            #random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=400, cv=3)
+            #random_search.fit(self.mlp_train_df[predictors], self.mlp_train_df['Survived'])
+
+            #report(random_search.grid_scores_)
+        elif dataset == 'test':
+	  
+            clf = MLPClassifier(learning_rate='constant', learning_rate_init=0.005, verbose=False, hidden_layer_sizes=(13,), max_iter=200, alpha=1e-05, activation='tanh', random_state=1)
+	    clf.fit(self.mlp_train_df[predictors], self.mlp_train_df['Survived'])
+            predictions = clf.predict(self.mlp_test_df[predictors])
+
+            submission = pd.DataFrame({
+	                 'PassengerId': self.test_df['PassengerId'], 
+			 'Survived': predictions,
+		    }) 
+            submission.to_csv('./mlpclassifier.csv', index=False)
     '''
     ==============================Machine Learning==================================
     '''
