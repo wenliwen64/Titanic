@@ -26,6 +26,7 @@ class SolverClass(object):
         self.test_raw_df = pd.read_csv(self.ori_ftest)
         self.test_df = self.test_raw_df.copy()
         self.DATASET_DICT = {'train': self.train_df, 'test': self.test_df}
+	self.age_mapping = {}
 
     def learn_and_evaluate_train(self):
         print('Phase II. Model evaluation...\n')
@@ -121,11 +122,11 @@ class SolverClass(object):
         # Convert the string data to numeric data or something like that 
         self.dconversion(dataset='train')
 
-        # Fill the missing values based on different models
-        self.fill_mv(dataset='train', method='category')
-
         # Finally generate new features
         self.generate_new_features(dataset='train')
+
+        # Fill the missing values based on different models
+        self.fill_mv(dataset='train', method='category')
 
         predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
 	self.train_df[predictors] = self.train_df[predictors].astype(float)
@@ -146,9 +147,8 @@ class SolverClass(object):
         self.dconversion(dataset='test')
 
         # Fill the missing values based on different models
-        self.fill_mv(dataset='test', method='category')
         self.generate_new_features(dataset='test')
-
+        self.fill_mv(dataset='test', method='category')
 
         predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
 	self.test_df[predictors] = self.test_df[predictors].astype(float)
@@ -216,8 +216,12 @@ class SolverClass(object):
 	        print(sum((ds['Age'].isnull()) & (ds['SibSp']>=2)))
 	        print('==================================')
 
-	    ds.loc[(ds['Age'].isnull()) & (ds['SibSp']>=2), 'Age'] = 11 #median
-	    ds.loc[(ds['Age'].isnull()) & (ds['SibSp']<2), 'Age'] = 28
+            #for k, v in self.age_mapping.items():
+	         #ds.loc[(ds['Age'].isnull()) & (ds['SibSp']>=2) & (ds['Titles']==k), 'Age'] = v['sibsp_many'] if v['sibsp_many'] else v['sibsp_few'] #median
+	         #ds.loc[(ds['Age'].isnull()) & (ds['SibSp']<2) & (ds['Titles']==k), 'Age'] = v['sibsp_few'] if v['sibsp_few'] else v['sibsp_many']#median
+            ds.loc[(ds['Age'].isnull()) & (ds['SibSp']>=2), 'Age'] = 11 #median
+	    ds.loc[(ds['Age'].isnull()) & (ds['SibSp']<2), 'Age'] = 28 #median
+
 	    print(ds['Age'])
         else:
             print('....!!! Choose correct method')
@@ -236,9 +240,15 @@ class SolverClass(object):
         for k, v in title_mapping.items():
             titles[titles == k] = v 
             ds['Titles'] = titles
+	    print('Title {}: {}'.format(k, sum((ds['Titles']==v) & (ds['Age'].isnull()))))
+	    print('Title {}: {}'.format(k, ds.loc[ds['Titles'] == v, 'Age'].median()))
 
         ds['Titles'] = ds['Titles'].astype(int)
+	if dataset == 'train':
+            for k, v in title_mapping.items():
+                self.age_mapping[v] = {'sibsp_many':ds.loc[(ds['Titles']==v) & (ds['SibSp']>=2), 'Age'].median(), 'sibsp_few':ds.loc[(ds['Titles']==v) & (ds['SibSp']<2), 'Age'].median()} 
 
+        print(self.age_mapping)
         family_ids = ds.apply(self.get_family_id, axis=1)
         family_ids[ds['FamilySize'] < 3] = -1
         ds['FamilyId'] = family_ids
