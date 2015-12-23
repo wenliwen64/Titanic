@@ -185,3 +185,22 @@ final_df.loc[final_df['Survived'] <= .5, 'Survived'] = 0
 print('soft result:{}'.format(final_df['Survived']))
 submission = pd.DataFrame({'PassengerId': test_file['PassengerId'], 'Survived': final_df['Survived'].astype(int)})
 submission.to_csv('soft_ensemble_except_mlpsvm.csv', index=False)
+
+# Hard Ensemble
+HARD_FILES = ['kaggle_titanic_rf.csv', 'titanic_gbt_1217.csv', 'xgboost_845.csv', 'svm_rbf.csv', 'xrt_1222.csv']
+weights = [1, 1, 1, 1, 1]
+final_df = pd.DataFrame({'PassengerId': test_file['PassengerId'],})
+for f in HARD_FILES:
+    df = pd.read_csv(f)
+    final_df[f] = df['Survived']
+
+final_df['Survived'] = final_df[HARD_FILES].dot(weights) / sum(weights)
+print('hard result:{}'.format(final_df['Survived']))
+final_df.loc[final_df['Survived'] > .5, 'Survived'] = 1
+final_df.loc[final_df['Survived'] <= .5, 'Survived'] = 0
+
+print('hard result:{}'.format(final_df['Survived']))
+submission = pd.DataFrame({'PassengerId': test_file['PassengerId'], 'Survived': final_df['Survived'].astype(int)})
+submission.to_csv('hard_ensemble_except_mlp_1222.csv', index=False)
+
+

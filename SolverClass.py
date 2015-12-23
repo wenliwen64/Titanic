@@ -122,7 +122,7 @@ class SolverClass(object):
         self.dconversion(dataset='train')
 
         # Fill the missing values based on different models
-        self.fill_mv(dataset='train', method='kde')
+        self.fill_mv(dataset='train', method='category')
 
         # Finally generate new features
         self.generate_new_features(dataset='train')
@@ -146,7 +146,7 @@ class SolverClass(object):
         self.dconversion(dataset='test')
 
         # Fill the missing values based on different models
-        self.fill_mv(dataset='test', method='kde')
+        self.fill_mv(dataset='test', method='category')
         self.generate_new_features(dataset='test')
 
 
@@ -208,6 +208,17 @@ class SolverClass(object):
 		    print('missing age to be filled is: {}'.format(age))
 		    selector = np.logical_and(ds['Sex']==gender, ds['Pclass']==pclass) 
 		    ds.loc[selector, 'Age'] = ds.loc[selector, 'Age'].fillna(age)
+        elif method == 'category':
+            selector = ds['Age'].isnull() 
+
+	    if(dataset=='test'):
+		print('==================================')
+	        print(sum((ds['Age'].isnull()) & (ds['SibSp']>=2)))
+	        print('==================================')
+
+	    ds.loc[(ds['Age'].isnull()) & (ds['SibSp']>=2), 'Age'] = 11 #median
+	    ds.loc[(ds['Age'].isnull()) & (ds['SibSp']<2), 'Age'] = 28
+	    print(ds['Age'])
         else:
             print('....!!! Choose correct method')
 
@@ -231,7 +242,6 @@ class SolverClass(object):
         family_ids = ds.apply(self.get_family_id, axis=1)
         family_ids[ds['FamilySize'] < 3] = -1
         ds['FamilyId'] = family_ids
-
  
     def sklearn_dformat(self, dataset='train'):  # DONE!!!
         return
@@ -282,10 +292,22 @@ class SolverClass(object):
 	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
      
         if dataset == 'train':
-            clf = ExtraTreesClassifier(n_estimators=200, max_depth=None, min_samples_split=1, max_features=2, random_state=0)
-            clf.fit(self.train_df[predictors], self.train_df['Survived'])
-            scores = cross_val_score(clf, self.train_df[predictors], self.train_df['Survived'], cv=3)
-            print('scores.mean = {}, scores.std = {}'.format(scores.mean(),scores.std()))
+            #clf = ExtraTreesClassifier(n_estimators=200, max_depth=None, min_samples_split=1, max_features=2, random_state=0)
+	    clf = ExtraTreesClassifier()
+	    param_grid = {
+	                 'n_estimators': [200, 250, 300, 350, 400, 450, 500], 
+			 'max_depth': [None, 3, 4, 5, 6],
+			 'min_samples_split': [1, 2, 3, 4, 5, 6],
+			 'max_features': [1, 2, 3, 4]
+	    }
+
+	    #grid_search = GridSearchCV(clf, param_grid=param_grid, cv=3)
+            #grid_search.fit(self.train_df[predictors], self.train_df['Survived'])
+	    #report(grid_search.grid_scores_)
+
+            #clf.fit(self.train_df[predictors], self.train_df['Survived'])
+            #scores = cross_val_score(clf, self.train_df[predictors], self.train_df['Survived'], cv=3)
+            #print('scores.mean = {}, scores.std = {}'.format(scores.mean(),scores.std()))
         elif dataset == 'test':
             clf = ExtraTreesClassifier(n_estimators=200, max_depth=None, min_samples_split=1, max_features=2, random_state=0)
             clf.fit(self.train_df[predictors], self.train_df['Survived'])
