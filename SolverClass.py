@@ -6,13 +6,15 @@ import numpy as np
 import pandas as pd
 from sklearn import linear_model, cross_validation
 from sklearn.cross_validation import KFold
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.ensemble import (GradientBoostingClassifier, RandomForestClassifier,
+                              ExtraTreesClassifier)
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.grid_search import GridSearchCV, RandomizedSearchCV
 from sklearn.svm import SVC
 from scipy.stats import randint as sp_randint
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
+from sklearn.cross_validation import cross_val_score
 import xgboost as xgb
 
 class SolverClass(object):
@@ -43,6 +45,9 @@ class SolverClass(object):
         print('>> MLP training data preparation...\n')
         self.mlp_dformat(dataset='train')
 
+        print('>> Training: extratrees clf...\n')
+	self.learn_and_predict_xrt(dataset='train')
+
 	print('>> Training: evaluate sklearn-MLP...\n')
         self.learn_and_predict_mlp(dataset='train')
 
@@ -72,6 +77,9 @@ class SolverClass(object):
 
 	print('>> MLP test data preparation...\n')
         self.mlp_dformat(dataset='test')
+
+        print('>> Predicting: extratrees clf...\n')
+	self.learn_and_predict_xrt(dataset='test')
 
         print('>> Predicting: using sklearn-mlpclassifier...\n')
         self.learn_and_predict_mlp(dataset='test')
@@ -270,36 +278,74 @@ class SolverClass(object):
             scaler.fit(self.mlp_train_df[predictors]) 
             self.mlp_test_df[predictors] = scaler.transform(self.mlp_test_df[predictors])
 
+    def learn_and_predict_xrt(self, dataset='train'):
+	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+     
+        if dataset == 'train':
+            clf = ExtraTreesClassifier(n_estimators=200, max_depth=None, min_samples_split=1, max_features=2, random_state=0)
+            clf.fit(self.train_df[predictors], self.train_df['Survived'])
+            scores = cross_val_score(clf, self.train_df[predictors], self.train_df['Survived'], cv=3)
+            print('scores.mean = {}, scores.std = {}'.format(scores.mean(),scores.std()))
+        elif dataset == 'test':
+            clf = ExtraTreesClassifier(n_estimators=200, max_depth=None, min_samples_split=1, max_features=2, random_state=0)
+            clf.fit(self.train_df[predictors], self.train_df['Survived'])
+	    predictions = clf.predict(self.test_df[predictors])
+	    predictions_proba = clf.predict_proba(self.test_df[predictors])
+	    predictions_proba = [f[1] for f in predictions_proba]
+	    print(predictions_proba)
+            submission = pd.DataFrame({
+	                 'PassengerId': self.test_df['PassengerId'],
+			 'Survived': predictions.astype(int),
+		    })
+            submission.to_csv('xrt_1222.csv', index=False) 
+
+            submission_proba = pd.DataFrame({
+	                 'PassengerId': self.test_df['PassengerId'],
+			 'Survived': predictions_proba,
+		    })
+            submission_proba.to_csv('xrt_1222_soft.csv', index=False) 
+
     def learn_and_predict_mlp(self, dataset='train'):
 	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
 	
 	if dataset == 'train':
 	    param_dist = {
+	        'algorithm': ['l-bfgs'],
 		'learning_rate': ['constant'],
 		'learning_rate_init': [0.05, 0.01, 0.005, 0.001], # what is this
-		    'hidden_layer_sizes': [(8,), (9,), (10,), (11,), (12,), (13,)],
+		'hidden_layer_sizes': [(8,), (9,), (10,), (11,), (12,), (13,), (14,), (15,)],
 		'activation': ['logistic', 'tanh', 'relu'],
 		'alpha':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1.], 
-		'verbose': [False], 
+		'verbose': [False],
 		'max_iter': [200],
 	    }
 
             clf = MLPClassifier()
-            #random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=400, cv=3)
-            #random_search.fit(self.mlp_train_df[predictors], self.mlp_train_df['Survived'])
+	    '''
+            random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=400, cv=3)
+            random_search.fit(self.mlp_train_df[predictors], self.mlp_train_df['Survived'])
 
-            #report(random_search.grid_scores_)
+            report(random_search.grid_scores_)
+	    '''  
         elif dataset == 'test':
 	  
-            clf = MLPClassifier(learning_rate='constant', learning_rate_init=0.005, verbose=False, hidden_layer_sizes=(13,), max_iter=200, alpha=1e-05, activation='tanh', random_state=1)
+            clf = MLPClassifier(learning_rate='constant', learning_rate_init=0.01, verbose=False, hidden_layer_sizes=(8,), max_iter=200, alpha=0.01, activation='relu', random_state=1)
 	    clf.fit(self.mlp_train_df[predictors], self.mlp_train_df['Survived'])
             predictions = clf.predict(self.mlp_test_df[predictors])
+	    predictions_proba = clf.predict_proba(self.mlp_test_df[predictors])
+	    predictions_proba = [f[1] for f in predictions_proba]
 
             submission = pd.DataFrame({
 	                 'PassengerId': self.test_df['PassengerId'], 
 			 'Survived': predictions,
 		    }) 
-            submission.to_csv('./mlpclassifier.csv', index=False)
+            submission.to_csv('./mlpclassifier_1222.csv', index=False)
+
+            submission_proba = pd.DataFrame({
+	                 'PassengerId': self.test_df['PassengerId'], 
+			 'Survived': predictions_proba,
+		    }) 
+            submission_proba.to_csv('./mlpclassifier_1222_soft.csv', index=False)
     '''
     ==============================Machine Learning==================================
     '''
@@ -314,7 +360,7 @@ class SolverClass(object):
 
             kf = KFold(self.train_df.shape[0], n_folds=3, random_state=1)
             full_predictions = []
-            for train,test in kf:
+            for train, test in kf:
                 cv_predictions = []
                 for alg, predictors in algorithms:
                     train_predictors = self.train_df[predictors].iloc[train,:].astype(float)
@@ -333,7 +379,12 @@ class SolverClass(object):
 
             full_predictions = np.concatenate(full_predictions, axis=0) 
             auc = float(np.sum(full_predictions == self.train_df['Survived'])) / float(np.size(full_predictions))
-            print ''.join(['accuracy is equal to ====> ', str(auc)])
+            print('accuracy is equal to ====> {}'.format(auc))
+            train_model = pd.DataFrame({
+	                  'PassengerId': self.train_df['PassengerId'],
+			  'Survived': full_predictions,
+	    })
+	    train_model.to_csv('./gbt_train.csv', index=False)
 
         if dataset == 'test':
 
@@ -351,6 +402,8 @@ class SolverClass(object):
                 predictions_ensemble.append(predictions)
 
             final_predictions = (predictions_ensemble[0] * 3 + predictions_ensemble[1]) / 4
+	    final_predictions_proba = final_predictions.copy()
+
             final_predictions[final_predictions > 0.5] = 1.
             final_predictions[final_predictions <= 0.5] = 0. 
             final_predictions = final_predictions.astype(int)
@@ -361,6 +414,13 @@ class SolverClass(object):
 		    'Survived': final_predictions
 		    })
             submission.to_csv('titanic_gbt_1217.csv', index=False)
+
+	    submission_proba = pd.DataFrame({
+		    'PassengerId': self.test_df['PassengerId'],
+		    'Survived': final_predictions_proba,
+		    })
+            submission_proba.to_csv('titanic_gbt_1217_soft.csv', index=False)
+
 
     def learn_and_predict_xgb(self, dataset='train'):
         '''
@@ -382,6 +442,19 @@ class SolverClass(object):
 	    #random_search.fit(self.train_df[predictors], self.train_df['Survived'])
 
 	    #report(random_search.grid_scores_)
+            params = {'max_depth': 6, 'learning_rate': 0.1, 'colsample_bytree': 0.5, 'n_estimators': 54, 'subsample': .3, 'gamma': 0, 'objective':'binary:logistic', 'eval_metric': 'auc'} #0.845, cv=3 
+	    bst = xgb.train(params, self.DMatrix_train)
+	    predictions = pd.Series(bst.predict(self.DMatrix_train))
+	    predictions[predictions >= .5] = 1
+	    predictions[predictions < .5] = 0
+	    predictions = [int(x) for x in predictions.tolist()]
+
+            train_model = pd.DataFrame({
+	                  'PassengerId': self.train_df['PassengerId'],
+			  'Survived': predictions,
+	    })
+	    train_model.to_csv('./xgb_train.csv', index=False)
+
         else: 
             params = {'max_depth': 6, 'learning_rate': 0.1, 'colsample_bytree': 0.5, 'n_estimators': 54, 'subsample': .3, 'gamma': 0, 'objective':'binary:logistic', 'eval_metric': 'auc'} #0.845, cv=3 
 	    bst = xgb.train(params, self.DMatrix_train)
@@ -389,6 +462,7 @@ class SolverClass(object):
 	    #clf.fit(self.train_df[predictors], self.train_df['Survived'], verbose=True)
 	    #print(self.test_df[predictors])
 	    predictions = pd.Series(bst.predict(self.DMatrix_test))
+	    predictions_proba = predictions.copy()
 	    predictions[predictions >= .5] = 1
 	    predictions[predictions < .5] = 0
 	    predictions = [int(x) for x in predictions.tolist()]
@@ -398,6 +472,13 @@ class SolverClass(object):
 		    'Survived': predictions 
 		    })
             submission.to_csv("xgboost_845.csv", index=False)
+	    
+            submission_proba = pd.DataFrame({
+                    'PassengerId': self.test_df['PassengerId'],
+		    'Survived': predictions_proba,
+		    })
+            submission_proba.to_csv("xgboost_845_soft.csv", index=False)
+
 
     def learn_and_predict_svm(self, dataset='train'):
 	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
@@ -417,10 +498,23 @@ class SolverClass(object):
 	    self.svm_params = top_params(random_search.grid_scores_)
 	    print(self.svm_params)
 
+            clf = SVC(kernel='rbf', C=10, gamma=0.00158)
+            clf.fit(self.train_df[predictors], self.train_df['Survived'])
+	    predictions = clf.predict(self.train_df[predictors])
+            predictions[predictions > .5] = 1  
+            predictions[predictions <= .5] = 0
+            train_model = pd.DataFrame({
+	                  'PassengerId': self.train_df['PassengerId'],
+			  'Survived': predictions,
+	    })
+	    train_model.to_csv('./svm_train.csv', index=False)
+
         elif dataset  == 'test':
 	    clf = SVC(kernel='rbf', C=10, gamma=0.00158)
             clf.fit(self.train_df[predictors], self.train_df['Survived'])
 	    predictions = clf.predict(self.test_df[predictors])
+	    predictions_proba = predictions.copy() # cannot predict probability. clf.predict_proba(self.test_df[predictors])
+	    #predictions_proba = [f[1] for f in predictions_proba]
             predictions[predictions > .5] = 1  
             predictions[predictions <= .5] = 0
             submission = pd.DataFrame({
@@ -428,6 +522,13 @@ class SolverClass(object):
 			     'Survived': predictions
 		    })
             submission.to_csv('svm_rbf.csv', index=False)
+
+	    submission_proba = pd.DataFrame({
+	                     'PassengerId': self.test_df['PassengerId'],
+			     'Survived': predictions_proba,
+		    })
+            submission_proba.to_csv('svm_rbf_soft.csv', index=False)
+
 
     def learn_and_predict_rf(self, dataset='train'):
 	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
@@ -442,6 +543,7 @@ class SolverClass(object):
 			  'n_estimators': sp_randint(10,200)}
 
             clf = RandomForestClassifier()
+
             #random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=500, cv=3)
 	    #random_search.fit(self.train_df[predictors], self.train_df['Survived'])
 	    #report(random_search.grid_scores_)
@@ -449,6 +551,20 @@ class SolverClass(object):
 
             #alg = RandomForestClassifier(random_state=1, n_estimators=20, min_samples_split=4, min_samples_leaf=2)
             #scores = cross_validation.cross_val_score(alg, self.train_df[predictors], self.train_df['Survived'], cv=3)
+            clf = RandomForestClassifier(random_state=1, n_estimators=109, min_samples_split=3, min_samples_leaf=6, criterion='gini', max_features=6, bootstrap=True)
+            clf.fit(self.train_df[predictors], self.train_df['Survived'])
+            predictions = clf.predict(self.train_df[predictors].astype(float))
+
+            predictions[predictions > .5] = 1
+            predictions[predictions <= .5] = 0
+            full_predictions = predictions.astype(int).copy()
+
+            train_model = pd.DataFrame({
+		    'PassengerId': self.train_df['PassengerId'],
+		    'Survived': full_predictions 
+	    })
+            train_model.to_csv('./rf_train.csv', index=False)
+
             """
             # Grid Search for the optimal parameters for random forest
             tuned_parameters = [{'n_estimators':[1, 10, 30, 100], 'min_samples_split':[2, 4, 8, 16], 'min_samples_leaf':[1, 2, 4, 6]}, ]   
@@ -468,10 +584,16 @@ class SolverClass(object):
             clf = RandomForestClassifier(random_state=1, n_estimators=109, min_samples_split=3, min_samples_leaf=6, criterion='gini', max_features=6, bootstrap=True)
             clf.fit(self.train_df[predictors], self.train_df['Survived'])
             predictions = clf.predict(self.test_df[predictors].astype(float))
+	    predictions_proba = clf.predict_proba(self.test_df[predictors].astype(float))
+	    predictions_proba = [f[1] for f in predictions_proba] 
 
             predictions[predictions > .5] = 1.
             predictions[predictions <= .5] = 0.
             self.test_predictions = predictions.astype(int).copy()
+
+            submission_soft = pd.DataFrame({'PassengerId': self.test_df['PassengerId'], 'Survived': predictions_proba})
+	    submission_soft.to_csv('rf_1222_soft.csv', index=False)
+
             return self.test_predictions
         
     def get_family_id(self, row):
