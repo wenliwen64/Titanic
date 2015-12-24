@@ -27,6 +27,8 @@ class SolverClass(object):
         self.test_df = self.test_raw_df.copy()
         self.DATASET_DICT = {'train': self.train_df, 'test': self.test_df}
 	self.age_mapping = {}
+	self.PREDICTORS = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize"]#, "Titles"]#, "FamilyId"]
+
 
     def learn_and_evaluate_train(self):
         print('Phase II. Model evaluation...\n')
@@ -129,6 +131,8 @@ class SolverClass(object):
         self.fill_mv(dataset='train', method='category')
 
         predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+	#assert(predictors == self.PREDICTORS)
+	predictors = self.PREDICTORS 
 	self.train_df[predictors] = self.train_df[predictors].astype(float)
         
 
@@ -257,7 +261,8 @@ class SolverClass(object):
         return
 
     def xgb_dformat(self, dataset='train'):  # Done
-        predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+        #predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+	predictors = self.PREDICTORS
         if dataset == 'train':
             ftrain = open('./titanic.train.dmatrix', 'w')
 
@@ -284,8 +289,8 @@ class SolverClass(object):
 	    #self.DMatrix_test.save_binary('titanic_test.buffer')
 
     def mlp_dformat(self, dataset='train'): 
-	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
-
+	#predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+        predictors = self.PREDICTORS
         scaler = StandardScaler()
 
         if dataset == 'train':
@@ -299,7 +304,8 @@ class SolverClass(object):
             self.mlp_test_df[predictors] = scaler.transform(self.mlp_test_df[predictors])
 
     def learn_and_predict_xrt(self, dataset='train'):
-	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+	#predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+	predictors = self.PREDICTORS
      
         if dataset == 'train':
             #clf = ExtraTreesClassifier(n_estimators=200, max_depth=None, min_samples_split=1, max_features=2, random_state=0)
@@ -338,7 +344,8 @@ class SolverClass(object):
             submission_proba.to_csv('xrt_1222_soft.csv', index=False) 
 
     def learn_and_predict_mlp(self, dataset='train'):
-	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+	#predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+	predictors = self.PREDICTORS
 	
 	if dataset == 'train':
 	    param_dist = {
@@ -382,8 +389,8 @@ class SolverClass(object):
     ==============================Machine Learning==================================
     '''
     def learn_and_predict_gbt(self, dataset='train'):  # DONE!!!
-	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
-
+	#predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+        predictors = self.PREDICTORS
         if dataset == 'train':
             algorithms = [
                 [GradientBoostingClassifier(random_state=1, n_estimators=25, max_depth=3), predictors],
@@ -458,7 +465,8 @@ class SolverClass(object):
         '''
         Use xgboost to do work
         '''
-	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+	#predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+	predictors = self.PREDICTORS
         if dataset == 'train':
 	    param_dist = {'max_depth': sp_randint(3, 10),
 	                  'learning_rate': [0.01, 0.03, 0.1, 0.3, 1.0],
@@ -513,8 +521,9 @@ class SolverClass(object):
 
 
     def learn_and_predict_svm(self, dataset='train'):
-	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
-	              "Titles", "FamilyId"]
+	#predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
+	#              "Titles", "FamilyId"]
+	predictors = self.PREDICTORS
 
         if dataset == 'train':
 	    param_dist = {
@@ -563,8 +572,9 @@ class SolverClass(object):
 
 
     def learn_and_predict_rf(self, dataset='train'):
-	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
-	              "Titles", "FamilyId"]
+	#predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
+	#              "Titles", "FamilyId"]
+	predictors = self.PREDICTORS
         if dataset == 'train':
 	    param_dist = {'max_depth': [3, None],
 	                  'max_features': sp_randint(1, 8),
@@ -612,7 +622,8 @@ class SolverClass(object):
         
             #print np.mean(scores)
         elif dataset == 'test':
-            predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+            #predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
+	    predictors = self.PREDICTORS
             clf = RandomForestClassifier(random_state=1, n_estimators=109, min_samples_split=3, min_samples_leaf=6, criterion='gini', max_features=6, bootstrap=True)
             clf.fit(self.train_df[predictors], self.train_df['Survived'])
             predictions = clf.predict(self.test_df[predictors].astype(float))
