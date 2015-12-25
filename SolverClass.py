@@ -43,13 +43,13 @@ class SolverClass(object):
         self.xgb_dformat(dataset='train')
 
         print('>> MLP training data preparation...\n')
-        self.mlp_dformat(dataset='train')
+        #self.mlp_dformat(dataset='train')
 
         print('>> Training: extratrees clf...\n')
 	self.learn_and_predict_xrt(dataset='train')
 
 	print('>> Training: evaluate sklearn-MLP...\n')
-        self.learn_and_predict_mlp(dataset='train')
+        #self.learn_and_predict_mlp(dataset='train')
 
         print('>> Training: evaluate sklearn-svm...\n')
         self.learn_and_predict_svm(dataset='train')
@@ -76,13 +76,13 @@ class SolverClass(object):
         self.xgb_dformat(dataset='test')
 
 	print('>> MLP test data preparation...\n')
-        self.mlp_dformat(dataset='test')
+        #self.mlp_dformat(dataset='test')
 
         print('>> Predicting: extratrees clf...\n')
 	self.learn_and_predict_xrt(dataset='test')
 
         print('>> Predicting: using sklearn-mlpclassifier...\n')
-        self.learn_and_predict_mlp(dataset='test')
+        #self.learn_and_predict_mlp(dataset='test')
 
         print('>> Predicting: evaluate sklearn-svm...\n')
         self.learn_and_predict_svm(dataset='test')
@@ -148,7 +148,6 @@ class SolverClass(object):
         # Fill the missing values based on different models
         self.fill_mv(dataset='test', method='category')
         self.generate_new_features(dataset='test')
-
 
         predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "Titles", "FamilyId"]
 	self.test_df[predictors] = self.test_df[predictors].astype(float)
@@ -217,7 +216,8 @@ class SolverClass(object):
 	        print('==================================')
 
 	    ds.loc[(ds['Age'].isnull()) & (ds['SibSp']>=2), 'Age'] = 11 #median
-	    ds.loc[(ds['Age'].isnull()) & (ds['SibSp']<2), 'Age'] = 28
+	    ds.loc[(ds['Age'].isnull()) & (ds['SibSp']<2) & (ds['Sex']==0), 'Age'] =30 
+	    ds.loc[(ds['Age'].isnull()) & (ds['SibSp']<2) & (ds['Sex']==1), 'Age'] =29 
 	    print(ds['Age'])
         else:
             print('....!!! Choose correct method')
@@ -274,7 +274,7 @@ class SolverClass(object):
 	    #self.DMatrix_test.save_binary('titanic_test.buffer')
 
     def mlp_dformat(self, dataset='train'): 
-	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", 'Titles', "FamilySize", "FamilyId"]
 
         scaler = StandardScaler()
 
@@ -289,7 +289,7 @@ class SolverClass(object):
             self.mlp_test_df[predictors] = scaler.transform(self.mlp_test_df[predictors])
 
     def learn_and_predict_xrt(self, dataset='train'):
-	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize", "FamilyId"]
+	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", 'Titles', "FamilySize", "FamilyId"]
      
         if dataset == 'train':
             #clf = ExtraTreesClassifier(n_estimators=200, max_depth=None, min_samples_split=1, max_features=2, random_state=0)
@@ -443,7 +443,6 @@ class SolverClass(object):
 		    })
             submission_proba.to_csv('titanic_gbt_1217_soft.csv', index=False)
 
-
     def learn_and_predict_xgb(self, dataset='train'):
         '''
         Use xgboost to do work
@@ -505,6 +504,12 @@ class SolverClass(object):
     def learn_and_predict_svm(self, dataset='train'):
 	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
 	              "Titles", "FamilyId"]
+                
+
+	train = self.train_df.copy() 
+        scaler = StandardScaler()
+        scaler.fit(train[predictors])
+        train[predictors] = scaler.transform(train[predictors])
 
         if dataset == 'train':
 	    param_dist = {
@@ -513,7 +518,7 @@ class SolverClass(object):
 	        'gamma': np.random.uniform(0, 1, 100),
 	    }
 
-            clf = SVC() 
+            clf = SVC()
 	    random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=100, cv=3)
             random_search.fit(self.train_df[predictors], self.train_df['Survived'])
             report(random_search.grid_scores_)
@@ -521,20 +526,27 @@ class SolverClass(object):
 	    print(self.svm_params)
 
             clf = SVC(kernel='rbf', C=10, gamma=0.00158)
-            clf.fit(self.train_df[predictors], self.train_df['Survived'])
-	    predictions = clf.predict(self.train_df[predictors])
+            clf.fit(train[predictors], train['Survived'])
+	    predictions = clf.predict(train[predictors])
             predictions[predictions > .5] = 1  
             predictions[predictions <= .5] = 0
             train_model = pd.DataFrame({
-	                  'PassengerId': self.train_df['PassengerId'],
+	                  'PassengerId': train['PassengerId'],
 			  'Survived': predictions,
 	    })
 	    train_model.to_csv('./svm_train.csv', index=False)
 
         elif dataset  == 'test':
+            train = self.train_df.copy() 
+            test = self.test_df.copy() 
+	    scaler = StandardScaler()
+	    scaler.fit(train[predictors])
+	    train[predictors] = scaler.transform(train[predictors])
+	    test[predictors] = scaler.transform(test[predictors])
+
 	    clf = SVC(kernel='rbf', C=10, gamma=0.00158)
-            clf.fit(self.train_df[predictors], self.train_df['Survived'])
-	    predictions = clf.predict(self.test_df[predictors])
+            clf.fit(train[predictors], train['Survived'])
+	    predictions = clf.predict(test[predictors])
 	    predictions_proba = predictions.copy() # cannot predict probability. clf.predict_proba(self.test_df[predictors])
 	    #predictions_proba = [f[1] for f in predictions_proba]
             predictions[predictions > .5] = 1  
@@ -550,7 +562,6 @@ class SolverClass(object):
 			     'Survived': predictions_proba,
 		    })
             submission_proba.to_csv('svm_rbf_soft.csv', index=False)
-
 
     def learn_and_predict_rf(self, dataset='train'):
 	predictors = ["Pclass", "Sex", "Age", "Fare", "Embarked", "FamilySize",
